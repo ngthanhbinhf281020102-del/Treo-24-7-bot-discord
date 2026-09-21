@@ -8,6 +8,10 @@ const {
     VoiceConnectionStatus
 } = require("@discordjs/voice");
 
+// ================================
+// CLIENT
+// ================================
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -33,10 +37,28 @@ if (
     !CHANNEL_ID
 ) {
     console.error(
-        "❌ Thiếu Railway Variables."
+        `[${getTime()}] ❌ Thiếu Railway Variables.`
     );
 
     process.exit(1);
+}
+
+// ================================
+// HÀM LẤY GIỜ
+// ================================
+
+function getTime() {
+
+    const now = new Date();
+
+    return now.toLocaleTimeString(
+        "vi-VN",
+        {
+            hour12: false,
+            timeZone: "Asia/Ho_Chi_Minh"
+        }
+    );
+
 }
 
 // ================================
@@ -61,8 +83,10 @@ function joinRoom() {
     if (!guild) {
 
         console.log(
-            "❌ Không tìm thấy server."
+            `[${getTime()}] ❌ Không tìm thấy server.`
         );
+
+        scheduleReconnect();
 
         return;
     }
@@ -75,8 +99,10 @@ function joinRoom() {
     if (!channel) {
 
         console.log(
-            "❌ Không tìm thấy phòng thoại."
+            `[${getTime()}] ❌ Không tìm thấy phòng thoại.`
         );
+
+        scheduleReconnect();
 
         return;
     }
@@ -84,7 +110,7 @@ function joinRoom() {
     if (!channel.isVoiceBased()) {
 
         console.log(
-            "❌ CHANNEL_ID không phải phòng thoại."
+            `[${getTime()}] ❌ CHANNEL_ID không phải phòng thoại.`
         );
 
         return;
@@ -122,7 +148,7 @@ function joinRoom() {
             });
 
         console.log(
-            `🎧 Đã vào phòng: ${channel.name}`
+            `[${getTime()}] 🎧 Đã vào phòng: ${channel.name}`
         );
 
         // ==========================
@@ -134,7 +160,7 @@ function joinRoom() {
             () => {
 
                 console.log(
-                    "✅ Voice đã sẵn sàng."
+                    `[${getTime()}] ✅ Voice đã sẵn sàng.`
                 );
 
             }
@@ -149,7 +175,7 @@ function joinRoom() {
             () => {
 
                 console.log(
-                    "⚠️ Voice bị mất kết nối."
+                    `[${getTime()}] ⚠️ Voice bị mất kết nối.`
                 );
 
                 scheduleReconnect();
@@ -166,7 +192,7 @@ function joinRoom() {
             () => {
 
                 console.log(
-                    "⚠️ Voice connection đã bị hủy."
+                    `[${getTime()}] ⚠️ Voice connection đã bị hủy.`
                 );
 
                 connection = null;
@@ -179,7 +205,7 @@ function joinRoom() {
     } catch (error) {
 
         console.error(
-            "❌ Lỗi khi vào voice:",
+            `[${getTime()}] ❌ Lỗi khi vào voice:`,
             error.message
         );
 
@@ -194,6 +220,7 @@ function joinRoom() {
 function scheduleReconnect() {
 
     if (reconnectTimer) {
+
         return;
     }
 
@@ -204,7 +231,7 @@ function scheduleReconnect() {
                 reconnectTimer = null;
 
                 console.log(
-                    "🔄 Đang thử kết nối lại voice..."
+                    `[${getTime()}] 🔄 Đang thử kết nối lại voice...`
                 );
 
                 joinRoom();
@@ -221,6 +248,7 @@ function scheduleReconnect() {
 function checkVoice() {
 
     if (checkingVoice) {
+
         return;
     }
 
@@ -236,7 +264,7 @@ function checkVoice() {
         if (!guild) {
 
             console.log(
-                "⚠️ Không tìm thấy server khi kiểm tra voice."
+                `[${getTime()}] ⚠️ Không tìm thấy server khi kiểm tra voice.`
             );
 
             return;
@@ -250,7 +278,7 @@ function checkVoice() {
         if (!channel) {
 
             console.log(
-                "⚠️ Không tìm thấy phòng voice khi kiểm tra."
+                `[${getTime()}] ⚠️ Không tìm thấy phòng voice khi kiểm tra.`
             );
 
             return;
@@ -275,7 +303,7 @@ function checkVoice() {
         ) {
 
             console.log(
-                "⚠️ Bot không còn ở phòng voice mục tiêu."
+                `[${getTime()}] ⚠️ Bot không còn ở phòng voice mục tiêu.`
             );
 
             if (
@@ -283,13 +311,13 @@ function checkVoice() {
             ) {
 
                 console.log(
-                    `📍 Bot hiện đang ở channel: ${currentChannelId}`
+                    `[${getTime()}] 📍 Bot hiện đang ở channel: ${currentChannelId}`
                 );
 
             } else {
 
                 console.log(
-                    "📍 Bot hiện không ở phòng voice nào."
+                    `[${getTime()}] 📍 Bot hiện không ở phòng voice nào.`
                 );
 
             }
@@ -304,13 +332,13 @@ function checkVoice() {
         // ==========================
 
         console.log(
-            "✅ Voice check: Bot vẫn đang ở đúng phòng."
+            `[${getTime()}] ✅ Voice check: Bot vẫn đang ở đúng phòng.`
         );
 
     } catch (error) {
 
         console.error(
-            "❌ Lỗi kiểm tra voice:",
+            `[${getTime()}] ❌ Lỗi kiểm tra voice:`,
             error.message
         );
 
@@ -326,31 +354,31 @@ function checkVoice() {
 // ================================
 
 client.once(
-    "ready",
+    "clientReady",
     () => {
 
         console.log(
-            "================================"
+            `[${getTime()}] =================================`
         );
 
         console.log(
-            `🤖 Bot online: ${client.user.tag}`
+            `[${getTime()}] 🤖 Bot online: ${client.user.tag}`
         );
 
         console.log(
-            `🆔 PID: ${process.pid}`
+            `[${getTime()}] 🆔 PID: ${process.pid}`
         );
 
         console.log(
-            `🏠 GUILD_ID: ${GUILD_ID}`
+            `[${getTime()}] 🏠 GUILD_ID: ${GUILD_ID}`
         );
 
         console.log(
-            `🎧 CHANNEL_ID: ${CHANNEL_ID}`
+            `[${getTime()}] 🎧 CHANNEL_ID: ${CHANNEL_ID}`
         );
 
         console.log(
-            "================================"
+            `[${getTime()}] =================================`
         );
 
         // ==========================
@@ -380,12 +408,13 @@ client.once(
             () => {
 
                 console.log(
-                    `💓 BOT ALIVE | ${new Date().toISOString()} | PID=${process.pid}`
+                    `[${getTime()}] 💓 BOT ALIVE | ${new Date().toISOString()} | PID=${process.pid}`
                 );
 
             },
             5 * 60 * 1000
         );
+
     }
 );
 
@@ -398,7 +427,7 @@ client.on(
     error => {
 
         console.error(
-            "❌ Discord Error:",
+            `[${getTime()}] ❌ Discord Error:`,
             error
         );
 
@@ -414,7 +443,7 @@ process.on(
     error => {
 
         console.error(
-            "❌ Unhandled Rejection:",
+            `[${getTime()}] ❌ Unhandled Rejection:`,
             error
         );
 
@@ -430,7 +459,7 @@ process.on(
     error => {
 
         console.error(
-            "❌ Uncaught Exception:",
+            `[${getTime()}] ❌ Uncaught Exception:`,
             error
         );
 
@@ -446,7 +475,7 @@ process.on(
     code => {
 
         console.log(
-            `🛑 PROCESS EXIT | code=${code}`
+            `[${getTime()}] 🛑 PROCESS EXIT | code=${code}`
         );
 
     }
@@ -461,7 +490,7 @@ process.on(
     () => {
 
         console.log(
-            "⚠️ SIGTERM - Railway đang yêu cầu dừng process."
+            `[${getTime()}] ⚠️ SIGTERM - Railway đang yêu cầu dừng process.`
         );
 
     }
@@ -476,7 +505,7 @@ process.on(
     () => {
 
         console.log(
-            "⚠️ SIGINT - Process bị dừng."
+            `[${getTime()}] ⚠️ SIGINT - Process bị dừng.`
         );
 
     }
@@ -485,6 +514,10 @@ process.on(
 // ================================
 // LOGIN
 // ================================
+
+console.log(
+    `[${getTime()}] 🔑 Đang đăng nhập Discord...`
+);
 
 client.login(
     TOKEN
