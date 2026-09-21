@@ -28,37 +28,30 @@ const GUILD_ID = process.env.GUILD_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 // ================================
-// KIỂM TRA VARIABLES
-// ================================
-
-if (
-    !TOKEN ||
-    !GUILD_ID ||
-    !CHANNEL_ID
-) {
-    console.error(
-        `[${getTime()}] ❌ Thiếu Railway Variables.`
-    );
-
-    process.exit(1);
-}
-
-// ================================
 // HÀM LẤY GIỜ
 // ================================
 
 function getTime() {
-
-    const now = new Date();
-
-    return now.toLocaleTimeString(
+    return new Date().toLocaleTimeString(
         "vi-VN",
         {
             hour12: false,
             timeZone: "Asia/Ho_Chi_Minh"
         }
     );
+}
 
+// ================================
+// KIỂM TRA VARIABLES
+// ================================
+
+if (!TOKEN || !GUILD_ID || !CHANNEL_ID) {
+
+    console.error(
+        `[${getTime()}] ❌ Thiếu Railway Variables.`
+    );
+
+    process.exit(1);
 }
 
 // ================================
@@ -70,15 +63,89 @@ let reconnectTimer = null;
 let checkingVoice = false;
 
 // ================================
+// HÀM KIỂM TRA CONNECTION CÒN HOẠT ĐỘNG
+// ================================
+
+function isConnectionActive() {
+
+    if (!connection) {
+        return false;
+    }
+
+    const status = connection.state.status;
+
+    return (
+        status === VoiceConnectionStatus.Ready ||
+        status === VoiceConnectionStatus.Connecting ||
+        status === VoiceConnectionStatus.Signalling
+    );
+}
+
+// ================================
+// HỦY CONNECTION CŨ
+// ================================
+
+function destroyConnection() {
+
+    const oldConnection = connection;
+
+    // Xóa tham chiếu trước khi hủy.
+    // Điều này giúp event từ connection cũ
+    // không ảnh hưởng đến connection mới.
+
+    connection = null;
+
+    if (oldConnection) {
+
+        try {
+
+            oldConnection.destroy();
+
+            console.log(
+                `[${getTime()}] 🧹 Đã dọn connection voice cũ.`
+            );
+
+        } catch (error) {
+
+            console.error(
+                `[${getTime()}] ❌ Lỗi hủy connection:`,
+                error.message
+            );
+
+        }
+    }
+}
+
+// ================================
 // HÀM VÀO PHÒNG
 // ================================
 
 function joinRoom() {
 
-    const guild =
-        client.guilds.cache.get(
-            GUILD_ID
+    // Nếu connection hiện tại vẫn hoạt động,
+    // không tạo connection mới.
+
+    if (isConnectionActive()) {
+
+        console.log(
+            `[${getTime()}] ℹ️ Connection vẫn hoạt động, bỏ qua yêu cầu kết nối trùng.`
         );
+
+        return;
+    }
+
+    // Nếu connection cũ còn nhưng không hoạt động,
+    // dọn dẹp trước khi tạo connection mới.
+
+    if (connection) {
+        destroyConnection();
+    }
+
+    // ================================
+    // LẤY SERVER
+    // ================================
+
+    const guild = client.guilds.cache.get(GUILD_ID);
 
     if (!guild) {
 
@@ -91,10 +158,11 @@ function joinRoom() {
         return;
     }
 
-    const channel =
-        guild.channels.cache.get(
-            CHANNEL_ID
-        );
+    // ================================
+    // LẤY CHANNEL
+    // ================================
+
+    const channel = guild.channels.cache.get(CHANNEL_ID);
 
     if (!channel) {
 
@@ -107,6 +175,10 @@ function joinRoom() {
         return;
     }
 
+    // ================================
+    // KIỂM TRA CHANNEL
+    // ================================
+
     if (!channel.isVoiceBased()) {
 
         console.log(
@@ -116,53 +188,58 @@ function joinRoom() {
         return;
     }
 
-    // ==========================
-    // HỦY CONNECTION CŨ
-    // ==========================
-
-    if (connection) {
-
-        try {
-
-            connection.destroy();
-
-        } catch {}
-
-        connection = null;
-    }
-
-    // ==========================
-    // TẠO CONNECTION MỚI
-    // ==========================
+    // ================================
+    // TẠO CONNECTION
+    // ================================
 
     try {
 
-        connection =
-            joinVoiceChannel({
-                channelId: channel.id,
-                guildId: guild.id,
-                adapterCreator:
-                    guild.voiceAdapterCreator,
-                selfDeaf: true,
-                selfMute: false
-            });
+        const newConnection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+
+            // Bot không nghe âm thanh.
+            selfDeaf: true,
+
+            // Không tự mute microphone.
+            selfMute: false
+        });
+
+        connection = newConnection;
 
         console.log(
-            `[${getTime()}] 🎧 Đã vào phòng: ${channel.name}`
+            `[${getTime()}] 🎧 Đang kết nối phòng: ${channel.name}`
         );
 
         // ==========================
         // VOICE READY
         // ==========================
 
-        connection.on(
+        newConnection.on(
             VoiceConnectionStatus.Ready,
             () => {
+
+                // Bỏ qua event từ connection cũ.
+
+                if (connection !== newConnection) {
+                    return;
+                }
 
                 console.log(
                     `[${getTime()}] ✅ Voice đã sẵn sàng.`
                 );
 
+                // Connection thành công,
+                // hủy timer reconnect nếu đang có.
+
+                if (reconnectTimer) {
+
+                    clearTimeout(reconnectTimer);
+
+                    reconnectTimer = null;
+
+                }
             }
         );
 
@@ -170,16 +247,21 @@ function joinRoom() {
         // VOICE DISCONNECTED
         // ==========================
 
-        connection.on(
+        newConnection.on(
             VoiceConnectionStatus.Disconnected,
             () => {
+
+                // Bỏ qua event từ connection cũ.
+
+                if (connection !== newConnection) {
+                    return;
+                }
 
                 console.log(
                     `[${getTime()}] ⚠️ Voice bị mất kết nối.`
                 );
 
-                scheduleReconnect();
-
+                scheduleReconnect(newConnection);
             }
         );
 
@@ -187,18 +269,24 @@ function joinRoom() {
         // VOICE DESTROYED
         // ==========================
 
-        connection.on(
+        newConnection.on(
             VoiceConnectionStatus.Destroyed,
             () => {
 
+                // Nếu connection này đã bị thay thế
+                // thì không làm gì.
+
+                if (connection !== newConnection) {
+                    return;
+                }
+
                 console.log(
-                    `[${getTime()}] ⚠️ Voice connection đã bị hủy.`
+                    `[${getTime()}] ⚠️ Voice connection đã bị destroy.`
                 );
 
                 connection = null;
 
                 scheduleReconnect();
-
             }
         );
 
@@ -217,38 +305,81 @@ function joinRoom() {
 // LÊN LỊCH KẾT NỐI LẠI
 // ================================
 
-function scheduleReconnect() {
+function scheduleReconnect(disconnectedConnection = null) {
+
+    // Chỉ cho phép một timer reconnect tồn tại.
 
     if (reconnectTimer) {
-
         return;
     }
 
-    reconnectTimer =
-        setTimeout(
-            () => {
+    reconnectTimer = setTimeout(
+        () => {
 
-                reconnectTimer = null;
+            reconnectTimer = null;
+
+            // ================================
+            // KIỂM TRA CONNECTION CŨ
+            // ================================
+
+            if (
+                disconnectedConnection &&
+                connection !== disconnectedConnection
+            ) {
 
                 console.log(
-                    `[${getTime()}] 🔄 Đang thử kết nối lại voice...`
+                    `[${getTime()}] ℹ️ Bỏ qua reconnect của connection cũ.`
                 );
 
-                joinRoom();
+                return;
+            }
 
-            },
-            5000
-        );
+            // ================================
+            // KIỂM TRA CONNECTION HIỆN TẠI
+            // ================================
+
+            if (isConnectionActive()) {
+
+                console.log(
+                    `[${getTime()}] ✅ Connection đã phục hồi, bỏ qua reconnect.`
+                );
+
+                return;
+            }
+
+            console.log(
+                `[${getTime()}] 🔄 Đang thử kết nối lại voice...`
+            );
+
+            // ================================
+            // DỌN CONNECTION CŨ
+            // ================================
+
+            if (connection) {
+                destroyConnection();
+            }
+
+            // ================================
+            // VÀO LẠI PHÒNG
+            // ================================
+
+            joinRoom();
+
+        },
+        5000
+    );
 }
 
 // ================================
-// KIỂM TRA BOT CÓ TRONG VOICE
+// KIỂM TRA BOT CÓ ĐÚNG PHÒNG VOICE
 // ================================
 
 function checkVoice() {
 
-    if (checkingVoice) {
+    // Không cho phép nhiều lần kiểm tra
+    // chạy cùng lúc.
 
+    if (checkingVoice) {
         return;
     }
 
@@ -256,10 +387,11 @@ function checkVoice() {
 
     try {
 
-        const guild =
-            client.guilds.cache.get(
-                GUILD_ID
-            );
+        // ================================
+        // LẤY SERVER
+        // ================================
+
+        const guild = client.guilds.cache.get(GUILD_ID);
 
         if (!guild) {
 
@@ -270,10 +402,11 @@ function checkVoice() {
             return;
         }
 
-        const channel =
-            guild.channels.cache.get(
-                CHANNEL_ID
-            );
+        // ================================
+        // LẤY CHANNEL
+        // ================================
+
+        const channel = guild.channels.cache.get(CHANNEL_ID);
 
         if (!channel) {
 
@@ -284,56 +417,86 @@ function checkVoice() {
             return;
         }
 
-        // ==========================
-        // KIỂM TRA BOT ĐANG Ở VOICE
-        // ==========================
+        // ================================
+        // KIỂM TRA VOICE STATE THỰC TẾ
+        // ================================
 
-        const botVoice =
-            guild.members.me?.voice;
+        const botVoice = guild.members.me?.voice;
 
-        const currentChannelId =
-            botVoice?.channelId;
+        const currentChannelId = botVoice?.channelId || null;
 
-        // ==========================
-        // KHÔNG Ở PHÒNG MỤC TIÊU
-        // ==========================
+        // ================================
+        // BOT ĐANG ĐÚNG PHÒNG
+        // ================================
 
-        if (
-            currentChannelId !== CHANNEL_ID
-        ) {
+        if (currentChannelId === CHANNEL_ID) {
 
-            console.log(
-                `[${getTime()}] ⚠️ Bot không còn ở phòng voice mục tiêu.`
-            );
+            // Nếu connection cũng hoạt động
+            // thì hoàn toàn bình thường.
 
-            if (
-                currentChannelId
-            ) {
+            if (isConnectionActive()) {
 
                 console.log(
-                    `[${getTime()}] 📍 Bot hiện đang ở channel: ${currentChannelId}`
+                    `[${getTime()}] ✅ Voice check: Bot đang đúng phòng và connection hoạt động.`
                 );
 
-            } else {
-
-                console.log(
-                    `[${getTime()}] 📍 Bot hiện không ở phòng voice nào.`
-                );
-
+                return;
             }
 
-            joinRoom();
+            // Bot vẫn ở phòng nhưng connection
+            // của thư viện không còn hoạt động.
+
+            console.log(
+                `[${getTime()}] ⚠️ Bot vẫn ở đúng phòng nhưng connection không hoạt động.`
+            );
+
+            if (reconnectTimer) {
+                return;
+            }
+
+            scheduleReconnect();
 
             return;
         }
 
-        // ==========================
-        // ĐANG Ở ĐÚNG PHÒNG
-        // ==========================
+        // ================================
+        // BOT KHÔNG Ở ĐÚNG PHÒNG
+        // ================================
 
         console.log(
-            `[${getTime()}] ✅ Voice check: Bot vẫn đang ở đúng phòng.`
+            `[${getTime()}] ⚠️ Bot không còn ở phòng voice mục tiêu.`
         );
+
+        // ================================
+        // BOT ĐANG Ở PHÒNG KHÁC
+        // ================================
+
+        if (currentChannelId) {
+
+            console.log(
+                `[${getTime()}] 📍 Bot hiện đang ở channel: ${currentChannelId}`
+            );
+
+        } else {
+
+            console.log(
+                `[${getTime()}] 📍 Bot hiện không ở phòng voice nào.`
+            );
+        }
+
+        // ================================
+        // DỌN CONNECTION CŨ
+        // ================================
+
+        if (connection) {
+            destroyConnection();
+        }
+
+        // ================================
+        // VÀO LẠI PHÒNG MỤC TIÊU
+        // ================================
+
+        scheduleReconnect();
 
     } catch (error) {
 
@@ -345,7 +508,6 @@ function checkVoice() {
     } finally {
 
         checkingVoice = false;
-
     }
 }
 
@@ -414,7 +576,6 @@ client.once(
             },
             5 * 60 * 1000
         );
-
     }
 );
 
@@ -463,6 +624,10 @@ process.on(
             error
         );
 
+        // Cho Railway tự khởi động lại process
+        // trong trường hợp lỗi nghiêm trọng.
+
+        process.exit(1);
     }
 );
 
@@ -493,6 +658,49 @@ process.on(
             `[${getTime()}] ⚠️ SIGTERM - Railway đang yêu cầu dừng process.`
         );
 
+        // Hủy timer reconnect.
+
+        if (reconnectTimer) {
+
+            clearTimeout(reconnectTimer);
+
+            reconnectTimer = null;
+        }
+
+        // Dọn voice connection.
+
+        if (connection) {
+
+            try {
+
+                connection.destroy();
+
+            } catch (error) {
+
+                console.error(
+                    `[${getTime()}] ❌ Lỗi cleanup voice:`,
+                    error.message
+                );
+            }
+
+            connection = null;
+        }
+
+        // Đóng Discord client.
+
+        try {
+
+            client.destroy();
+
+        } catch (error) {
+
+            console.error(
+                `[${getTime()}] ❌ Lỗi đóng Discord client:`,
+                error.message
+            );
+        }
+
+        process.exit(0);
     }
 );
 
@@ -508,6 +716,49 @@ process.on(
             `[${getTime()}] ⚠️ SIGINT - Process bị dừng.`
         );
 
+        // Hủy timer reconnect.
+
+        if (reconnectTimer) {
+
+            clearTimeout(reconnectTimer);
+
+            reconnectTimer = null;
+        }
+
+        // Dọn voice connection.
+
+        if (connection) {
+
+            try {
+
+                connection.destroy();
+
+            } catch (error) {
+
+                console.error(
+                    `[${getTime()}] ❌ Lỗi cleanup voice:`,
+                    error.message
+                );
+            }
+
+            connection = null;
+        }
+
+        // Đóng Discord client.
+
+        try {
+
+            client.destroy();
+
+        } catch (error) {
+
+            console.error(
+                `[${getTime()}] ❌ Lỗi đóng Discord client:`,
+                error.message
+            );
+        }
+
+        process.exit(0);
     }
 );
 
@@ -519,6 +770,4 @@ console.log(
     `[${getTime()}] 🔑 Đang đăng nhập Discord...`
 );
 
-client.login(
-    TOKEN
-);
+client.login(TOKEN);
